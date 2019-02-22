@@ -1,0 +1,9 @@
+{
+    "python.pythonPath": "/home/capptu/envs/opencv/bin/python",
+    "python.linting.enabled": true,
+    "editor.rulers": [80,120],
+    "workbench.colorCustomizations": {
+        "editorRuler.foreground": "#234081"
+    }
+
+}
