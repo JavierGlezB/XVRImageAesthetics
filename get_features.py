@@ -4,11 +4,15 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import random
-
+import time
+import csv
+import math
+import infinity
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 class Convolve():
 
-    def __init__(self,):
-
+    def __init__(self,image_dim = 1200):
+        self.image_dim = image_dim
         self.k1_1 = np.array([
             [-1, 1, -1],
             [1, 0, 1],
@@ -93,6 +97,19 @@ class Convolve():
 
         ch_0, ch_1, ch_2, out, graph = self.convolutions_graph()                        
 
+        regions = np.array([[1,1], [-1,1], [1,-1], [-1 ,-1]])
+        pattern = np.array([[2,0], [4,0], [0,2], [0,4]] + [[i,i]for i in range(5)])
+        pattern = [ (r * pattern).tolist()  for r in regions]
+        pos = set()
+        for sector in pattern:
+            for tupl in sector:
+               pos.add(tuple(tupl))
+        self.pattern = list(pos)
+
+
+        self.filtered = []
+
+
     def convolutions_graph(self):
         graph = tf.Graph()
         with graph.as_default():
@@ -158,18 +175,19 @@ class Convolve():
             for ch in chanels:
                 for k in kernels:
 
-                    output = tf.nn.conv2d(
+                    output_0 = tf.nn.conv2d(
                         input=ch,
                         filter=k[0],
                         strides=[1, 1, 1, 1],
                         padding='SAME')
 
-                    output = tf.nn.conv2d(
-                        input=output,
+                    output_1 = tf.nn.conv2d(
+                        input=ch,
                         filter=k[1],
                         strides=[1, 1, 1, 1],
                         padding='SAME')
 
+                    output = tf.sqrt(tf.square(output_0) + tf.square(output_1))
                     outs.append(output)
 
             out = tf.concat(axis=1, values=outs)  
@@ -184,9 +202,8 @@ class Convolve():
 
     def run_convolution_graph(self, image):
         
-        photos = os.listdir('./CapptuPhotos/')
         
-        
+                
         with tf.Session(graph=self.graph) as sess:
                         
             chanel_0 = image[:, :, 0]
@@ -206,29 +223,17 @@ class Convolve():
             filtered = []
             for i in range(12):
                 f_image = result[i * heigth : (i+1) * heigth,:]
-                filtered.append(f_image)
+                filtered.append(  (255 * (f_image / np.max(f_image))).astype('uint8') )
+            self.filtered = filtered
         return filtered
-
-
-    def key_point_descriptor(keypoint, image):
-
-        return keypoint
 
     def fast(self, img):
         fast = cv2.FastFeatureDetector_create()
-        kp = fast.detect(img, None)[:500]
-        img2 = cv2.drawKeypoints(img, kp, color=(255, 0, 0), outImage=True)
-        img2 = cv2.drawKeypoints(img, kp, color=(255, 0, 0), outImage=True)
-        # cv2.imwrite(str(random.random())+'.jpg',img2)
-        return kp
-
-    def get_fast_key_points(self, convoluted):
-        key_points = []
-        for image_filtered in convoluted:
-            for chanel in image_filtered:
-                q = self.fast(chanel)
-                key_points += q
-        return key_points
+        kp = fast.detect(img, None)
+        best = self.get_best_keypoints(kp)
+        #img2 = cv2.drawKeypoints(img, best, color=(255, 0, 0), outImage=True)# save kp image
+        #cv2.imwrite('./bestkeypointsImages/'+str(random.random())+'.jpg',img2)
+        return best
 
     def get_best_keypoints(self, keypoints):
         responses = np.array([key.response for key in keypoints])
@@ -237,13 +242,76 @@ class Convolve():
                               for i in strongest_response_index[:500]]
         return strongest_response
 
+    def get_fast_kp(self,filtered):
+        key_points = []
+        for image in filtered:
+            kp = self.fast(image)
+            key_points.append(kp)
+        return key_points
+
     def get_descriptors(self, best_keypoints):
         descriptors = []
-        for keypoint in best_keypoints:
-            descriptors.append(self.key_point_descriptor(keypoint))
+        for f_index, image_kp in enumerate(best_keypoints):
+            for kp in image_kp:
+                descriptor = self.valid_pattern(kp, f_index)
+                mean = np.mean(descriptor)
+                std = np.std(descriptor)
+                entropy = 'Entropy'
+                var_hist = 'var_hist'
+                descriptors.append([mean, std, entropy, var_hist])
         return descriptors
 
-    def main(self, image):
-        width, heigth, chanels = image.shape
-        convolved = self.convolutions_graph(image)
-        return convolved
+
+    def valid_pattern(self, kp, f_index):
+        valid = []
+        x, y = kp.pt
+        for pattern_x, pattern_y in self.pattern:
+            new_x, new_y = ( int(x + pattern_x), int(y + pattern_y)) 
+            if  ((new_x >= 0 and new_x < self.image_dim) and
+            (new_y >= 0 and new_y < self.image_dim)):
+                diff = self.neighbours_difference(new_x, new_y, f_index)
+                valid.append(diff)
+        return valid
+
+
+    def neighbours_difference(self, x, y, f_index):
+        valid_n = []
+        for i in range(-1,2):
+            for j in range(-1,2):
+                if i != j:
+                    x_n = x - i
+                    y_n = y + j 
+                    if ((x_n >= 0 and x_n < self.image_dim) and 
+                        (y_n >= 0 and y_n < self.image_dim)):
+                        valid_n.append(self.filtered[f_index][x_n,y_n])
+        n_mean = np.mean(valid_n)
+        kp_value = self.filtered[f_index][x,y]
+        return abs(kp_value - n_mean)
+
+def test(stop = infinity.inf):
+    image_path = './CapptuPhotos/'
+    images_names = os.listdir('./CapptuPhotos/')
+    total_images = len (images_names)
+    print "{0} images found".format(total_images)
+    image_dim = 1200
+    con = Convolve(image_dim= image_dim)
+    con.convolutions_graph()
+    t1 = time.time()
+    with open('./descriptors.csv', mode='w') as log_file:
+        descriptor_writer = csv.writer(log_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+        for i, im_name in enumerate(images_names):
+            print 'Image: ' + im_name  +', Progress: ' + str(100 * i /float(total_images) ) + "%"
+            image = cv2.cvtColor(cv2.resize(cv2.imread(image_path+im_name), (image_dim, image_dim)), cv2.COLOR_RGB2YCrCb)
+            try:
+                filtered = con. run_convolution_graph(image)
+                key_points = con.get_fast_kp(filtered)
+                descriptors = con.get_descriptors(key_points)
+                descriptor_writer.writerow(['[OK]',i,im_name, descriptors])
+            except:
+                descriptor_writer.writerow(['[Fail]',i,im_name])
+            if i>=stop:
+                break
+        t2 = time.time()
+        print "Elapsed Time (s): {0}".format(t2-t1)
+        return filtered, image, key_points, descriptors
