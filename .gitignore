@@ -4,3 +4,4 @@ CapptuPhotos/
 *.pyc
 allmodel
 *.csv
+kp/*

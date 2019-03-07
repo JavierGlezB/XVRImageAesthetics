@@ -8,6 +8,7 @@ import time
 import csv
 import math
 import infinity
+from utils import entropy, entropy_ideal
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 class Convolve():
 
@@ -229,17 +230,18 @@ class Convolve():
 
     def fast(self, img):
         fast = cv2.FastFeatureDetector_create()
+        fast.setNonmaxSuppression(0)
         kp = fast.detect(img, None)
         best = self.get_best_keypoints(kp)
         #img2 = cv2.drawKeypoints(img, best, color=(255, 0, 0), outImage=True)# save kp image
         #cv2.imwrite('./bestkeypointsImages/'+str(random.random())+'.jpg',img2)
         return best
 
-    def get_best_keypoints(self, keypoints):
+    def get_best_keypoints(self, keypoints, max_number=500):
         responses = np.array([key.response for key in keypoints])
         strongest_response_index = np.argsort(-responses)
         strongest_response = [keypoints[i]
-                              for i in strongest_response_index[:500]]
+                              for i in strongest_response_index[:max_number]]
         return strongest_response
 
     def get_fast_kp(self,filtered):
@@ -247,18 +249,19 @@ class Convolve():
         for image in filtered:
             kp = self.fast(image)
             key_points.append(kp)
-        return key_points
+        return key_points#self.get_best_keypoints(key_points)
 
     def get_descriptors(self, best_keypoints):
         descriptors = []
         for f_index, image_kp in enumerate(best_keypoints):
             for kp in image_kp:
                 descriptor = self.valid_pattern(kp, f_index)
-                mean = np.mean(descriptor)
-                std = np.std(descriptor)
-                entropy = 'Entropy'
-                var_hist = 'var_hist'
-                descriptors.append([mean, std, entropy, var_hist])
+                #mean = np.mean(descriptor)
+                #std = np.std(descriptor)
+                #entropy = entropy(descriptor)
+                #var_hist = np.var(descriptor)
+                #descriptors.append([mean, std, entropy, var_hist])
+                descriptors.append(descriptor)
         return descriptors
 
 
@@ -286,7 +289,7 @@ class Convolve():
                         valid_n.append(self.filtered[f_index][x_n,y_n])
         n_mean = np.mean(valid_n)
         kp_value = self.filtered[f_index][x,y]
-        return abs(kp_value - n_mean)
+        return round(abs(kp_value - n_mean) ,2)
 
 def test(stop = infinity.inf):
     image_path = './CapptuPhotos/'
@@ -297,21 +300,32 @@ def test(stop = infinity.inf):
     con = Convolve(image_dim= image_dim)
     con.convolutions_graph()
     t1 = time.time()
-    with open('./descriptors.csv', mode='w') as log_file:
-        descriptor_writer = csv.writer(log_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
-        for i, im_name in enumerate(images_names):
+
+    for i, im_name in enumerate(images_names):
+        file_path = './kp/'+im_name+'.csv'
+        with open(file_path, mode='w') as log_file:
+            descriptor_writer = csv.writer(log_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             print 'Image: ' + im_name  +', Progress: ' + str(100 * i /float(total_images) ) + "%"
-            image = cv2.cvtColor(cv2.resize(cv2.imread(image_path+im_name), (image_dim, image_dim)), cv2.COLOR_RGB2YCrCb)
             try:
+                image = cv2.cvtColor(cv2.resize(cv2.imread(image_path+im_name), (image_dim, image_dim)), cv2.COLOR_RGB2YCrCb)
                 filtered = con. run_convolution_graph(image)
                 key_points = con.get_fast_kp(filtered)
+                print len(key_points)
                 descriptors = con.get_descriptors(key_points)
-                descriptor_writer.writerow(['[OK]',i,im_name, descriptors])
+                print len(descriptors)
+                for descriptor in descriptors:
+                    descriptor_writer.writerow(descriptor)
+                erase = False
             except:
-                descriptor_writer.writerow(['[Fail]',i,im_name])
-            if i>=stop:
-                break
-        t2 = time.time()
-        print "Elapsed Time (s): {0}".format(t2-t1)
-        return filtered, image, key_points, descriptors
+                #pass
+                erase = True
+                #descriptor_writer.writerow(['[Fail]',i,im_name])
+        if erase == True:
+            os.remove(file_path)
+
+        if i>=stop:
+            break
+    t2 = time.time()
+    print "Elapsed Time (s): {0}".format(t2-t1)
+    #return filtered, image, key_points, descriptors
