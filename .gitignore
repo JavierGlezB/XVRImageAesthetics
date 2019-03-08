@@ -5,3 +5,5 @@ CapptuPhotos/
 allmodel
 *.csv
 kp/*
+bestekeypointsImages/*
+database/*

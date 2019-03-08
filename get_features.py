@@ -109,7 +109,7 @@ class Convolve():
 
 
         self.filtered = []
-
+        self.i = 0
 
     def convolutions_graph(self):
         graph = tf.Graph()
@@ -230,11 +230,12 @@ class Convolve():
 
     def fast(self, img):
         fast = cv2.FastFeatureDetector_create()
-        fast.setNonmaxSuppression(0)
+        #fast.setNonmaxSuppression(0)  // non max supression didnt work
         kp = fast.detect(img, None)
         best = self.get_best_keypoints(kp)
         #img2 = cv2.drawKeypoints(img, best, color=(255, 0, 0), outImage=True)# save kp image
-        #cv2.imwrite('./bestkeypointsImages/'+str(random.random())+'.jpg',img2)
+        #cv2.imwrite('./bestkeypointsImages/'+str(self.i)+'.jpg',img2)
+        #self.i += 1
         return best
 
     def get_best_keypoints(self, keypoints, max_number=500):
@@ -311,9 +312,9 @@ def test(stop = infinity.inf):
                 image = cv2.cvtColor(cv2.resize(cv2.imread(image_path+im_name), (image_dim, image_dim)), cv2.COLOR_RGB2YCrCb)
                 filtered = con. run_convolution_graph(image)
                 key_points = con.get_fast_kp(filtered)
-                print len(key_points)
+                #print len(key_points)
                 descriptors = con.get_descriptors(key_points)
-                print len(descriptors)
+                #print len(descriptors)
                 for descriptor in descriptors:
                     descriptor_writer.writerow(descriptor)
                 erase = False
